@@ -7,8 +7,22 @@ import java.util.Collections;
 import java.util.Scanner;
 import java.util.Stack;
 
-public class Solution {
+/*
+ * Board Cutting
+ * 
+ * Passes all tests
+ * 
+ * Note: One lesson learned on this problem is to pay attention
+ * 		to variable size. This was passing half of the tests
+ * 		and then failing the rest. It took a complete rewrite
+ * 		following the editorial code on HackerRank for me to realize
+ * 		my problem. My cut() method was taking in the costs as ints
+ * 		and then multiplying by an int and then returning a long.
+ * 		To avoid arithmetic overflow in the problem, one of the
+ * 		variables needs to be long.
+ */
 
+public class Solution {	
 	public static void main(String[] args) throws IOException {
 		new Solution().run(new Scanner(System.in), System.out);
 	}
@@ -84,42 +98,37 @@ public class Solution {
 				// Do y
 				min = cut(min, yCosts.pop(), xSegs);
 				++ySegs;
-				--cutsLeft;
 			}
 			else if(yCosts.isEmpty()) {
 				// Do x
 				min = cut(min, xCosts.pop(), ySegs);
 				++xSegs;
-				--cutsLeft;
 			}
 			else if(xCosts.peek() > yCosts.peek()) {
 				min = cut(min, xCosts.pop(), ySegs);
 				++xSegs;
-				--cutsLeft;
 			}
 			else if(yCosts.peek() > xCosts.peek()) {
 				min = cut(min, yCosts.pop(), xSegs);
 				++ySegs;
-				--cutsLeft;
 			}
 			else { // Next high is equal in both, take the cut with fewer segs
 				if(xSegs < ySegs) { //  Cut on y if x has fewer segs
 					min = cut(min, yCosts.pop(), xSegs);
 					++ySegs;
-					--cutsLeft;
 				}
 				else if(ySegs <= xSegs) { // Cut on x if y has fewer segs or if segs are equal
 					min = cut(min, xCosts.pop(), ySegs);
 					++xSegs;
-					--cutsLeft;
 				}
 			}
+			--cutsLeft;
 		}
 		
 		return min;
 	}
 	
-	private long cut(long min, int cost, int cutsAcross) {
+	private long cut(long min, long cost, int cutsAcross) {
 		return (min + (cutsAcross * cost) % 1000000007) % 1000000007;
 	}
 }
