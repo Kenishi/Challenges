@@ -9,6 +9,6 @@ Code for completeing various challenges from different places
 
 Details my solutions to problems on HackerRank
 
-### /Jobs
+### /Company Challenges
 
-Details my solutions to challenges put up by companies which are publically available on the site. Names may or may not be scrubbed.
+Details my solutions to challenges put up by companies which are publically available on their site. Names may or may not be scrubbed.

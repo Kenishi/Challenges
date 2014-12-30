@@ -1,21 +1,106 @@
-package quora.solutions.feed;
-
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Scanner;
-import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 /*
- * Quora Feed Challenge Solution
+ * Feed Challenge
+ * 
+ * Overview:
+ * 
+ * You are tasked with creating a news feed for a site. The news feed will
+ * receive simple story inputs at various times along with refresh requests.
+ * Every story will have a score, the time it was added/created, and the height
+ * of the story in pixels.
+ * 
+ * At the start of the program you are given 3 variables:
+ * Event count, Time window, Browser Height
+ * 
+ * The first line of input will have this information. For example:
+ * 9 10 100
+ * 
+ * There will be 9 events after this first line. Your time window is 10, so stories
+ * outside a time of 10 should not be considered at the time of refresh (example below).
+ * You height window is 100.
+ * 
+ * =====
+ * 
+ * When you receive a story input (via console STDIN) it will come in the following format:
+ * 
+ * S 10 50 35
+ * 
+ * 'S' for story. 10 is the time. 50 is the score. 35 is the height.
+ * 
+ * In addition, every story will have an ID which increases with each new addition.
+ * You, the developer, will need to keep track of that id.
+ * 
+ * IDs start from 1.
+ * 
+ * ======
+ * 
+ * When you receive a refresh from input it will come in the following format:
+ * 
+ * R 20
+ * 
+ * 'R' for refresh. 20 is the time of the refresh.
+ * 
+ * On refresh, Your goal is to pick the stories that yield the maximum score without going 
+ * over the max height of the window.
+ * If multiple sets yield the same score, choose the one with fewer stories.
+ * If there are sets with the same score and same number of stories, then choose the set which
+ * is lexographically smaller based on ids. For example, { 1, 2, 4 } is smaller than { 1, 3, 4 }.
+ * 
+ * ======
+ * 
+ * When refresh is called you should print out (via STDOUT) your selection in the following format:
+ * (Total Score) (Story Count) (ID) (ID) (ID) ....
+ * 
+ * For example:
+ * 
+ * 150 3 1 3 4
+ * 
+ * 150 is total score of the set. 3 is how many stories there are. 1 3 4 are the story ids.
+ * 
+ * You should output IDs in increasing order of their ID.
+ * 
+ * ======
+ * 
+ * Sample Input
+ * 
+ * 9 10 100
+ * S 11 50 30
+ * R 12
+ * S 13 40 20
+ * S 14 45 40
+ * R 15
+ * R 16 
+ * S 18 45 20
+ * R 21
+ * R 22
+ * 
+ * Sample Ouput
+ * 
+ * 50 1 1
+ * 135 3 1 2 3
+ * 135 3 1 2 3
+ * 140 3 1 3 4
+ * 130 3 2 3 4   (Note: Story 1 is excluded here because story 1 is now > 10 time units old)
+ *
+ * Constraints
+ * Times: 1 to 1,000,000,000
+ * Scores: 1 to 1,000,000
+ * Heights: All positive integers
+ * Event count: 0 < N <= 10,000
+ * Window Height: 0 < H <= 2,000
+ * Time Window: 0 < W <= 2,000
+ */
+
+/*
+ * Feed Challenge Solution
  * 
  * Author: Jeremy May
  * Check my resume out at: http://aberdynic.appspot.com/?id=fullres-81045
@@ -26,7 +111,7 @@ import java.util.concurrent.TimeUnit;
  * 
  * The flow of the program is such:
  * 
- * 1) QuoraFeed/Solution main calls run() w/ STDIN & STDOUT.
+ * 1) Feed main calls run() w/ STDIN & STDOUT.
  * 
  * 2) run() will create a SortedDensityArray instance which stores Story objects
  * 	with high score to height ratios first.
@@ -75,21 +160,11 @@ import java.util.concurrent.TimeUnit;
  * 	stories are selected. As a result, a lexicographical comparison can't be done till AFTER the tree search
  * 	has completed.  
  * 	 
- * 10) The search completes when either:
- *  A) result set's score is greater than the next node's max theoretical score, on the search stack 
- * 	B) when the search stack size reaches 0
- * 
- * 11) On completion, the result set's size is checked if there is only 1 node in the set, that is returned.
- * 	If there is more than one, then that means there are more than one possible selection which has the same
- * 	story count and score. So the set is passed through a lexographical test and the lowest story set is returned.
- * 
- * In my tests, using a large time window and a high story count, it completes in about 0.8 to 1 second.
- * 
- * 
- * 
+ * 10) The search completes when either result set's score is greater than the max theoretical score OR
+ * 	when the searchStack size reaches 0. 
  */
 
-public class Solution {
+public class Feed {
 	
 	/**
 	 * The accumulator for stories.
@@ -104,7 +179,7 @@ public class Solution {
 	private int m_idAccumulator = 0;
 	
 	public static void main(String[] args) throws NumberFormatException, IOException {
-		Solution feed = new Solution();
+		Feed feed = new Feed();
 		feed.run(new Scanner(System.in), System.out);
 	}
 	
@@ -121,7 +196,7 @@ public class Solution {
 	 */
 	public void run(Scanner input, PrintStream output) throws NumberFormatException, IOException {
 		// Read feed parameters: (Event Count) (Time window) (Window Height)
-		String[] args = input.nextLine().trim().split("\\p{Blank}");
+		String[] args = input.nextLine().trim().split(" ");
 		if(args.length != 3) { throw new IllegalArgumentException("Initial variables: expected 3 arguments, got: " + Integer.toString(args.length)); }
 		
 		int eventCount = Integer.valueOf(args[0]);
@@ -137,7 +212,7 @@ public class Solution {
 		String[] split = null;
 		for(int i=0; i < eventCount; i++) {
 			line = input.nextLine().trim();
-			split = line.split("\\p{Blank}");
+			split = line.split(" ");
 			
 			if(split.length == 4) { // Add story
 				if(split[0].equals("S")) {
@@ -265,12 +340,6 @@ public class Solution {
 				if(story.density() > m_stories.get(i).density()) {
 					m_stories.add(i, story);
 					return true;
-				}
-				else if(story.density() == m_stories.get(i).density()) {
-					if(story.id() < m_stories.get(i).id()) {
-						m_stories.add(i, story);
-						return true;
-					}
 				}
 			}
 			m_stories.add(story); // Insert at end	
@@ -643,76 +712,50 @@ public class Solution {
 			if(m_array.size() == 0) { return "0 0"; }
 			else if(m_array.size() < 0) { throw new UnexpectedStateException("Story array size was < 0"); }
 			
-			SearchResultSet resultSet = process();
-			
-			String result = getResultString(resultSet);
-			
-			return result;
-		}
-		
-		private SearchResultSet process() {
 			// Refresh root node with new fractional max
 			m_root = new RootNode(m_array.maxFractionalScore(), m_array);
 			
-			FinishState finishState = new FinishState();			
-			SearchDeciderStack searchStack = new SearchDeciderStack(new DeciderComparator(m_array), finishState);
-			SearchResultSet resultSet = new SearchResultSet(m_array, finishState);
-
-			ArrayBlockingQueue<Runnable> runQueue = new ArrayBlockingQueue<Runnable>(10);
-			ThreadPoolExecutor threadPool = new ThreadPoolExecutor(4, 10, 5000, TimeUnit.MILLISECONDS, runQueue);
+			
+			SearchDeciderStack searchStack = new SearchDeciderStack();
+			SearchResultSet resultSet = new SearchResultSet();
+			
+			
+			/* Flags for CreateNode */
+			boolean LEFT = true;
+			boolean RIGHT = false;
 			
 			// Push root branches, can't push root due to root not having a selection state
-			if(m_root.right() != null) { searchStack.push(m_root.right()); }
 			if(m_root.left() != null) { searchStack.push(m_root.left()); }
+			if(m_root.right() != null) { searchStack.push(m_root.right()); }
 			
+			boolean createResult = false;
 			/*
 			 * Loop until either:
 			 * 		Our result set's max score beats the current theoretical max
 			 * OR
 			 * 		Our search stack hits 0
 			 */
-			SearchThread[] workers = new SearchThread[1];
-			ThreadGroup group = populate(workers, resultSet, searchStack);
-			
-			SearchTreeNode nextNode = null;
-			while(notFinished(resultSet, searchStack, finishState)) {
-				nextNode = searchStack.pop();
-				if(nextNode == null) { continue; }
-				//System.out.println("Putting node:" + nextNode.selection().toString() + " | " + nextNode.stats());
+			while(resultSet.curMaxScore() <= searchStack.currentMaxFractional() &&
+					searchStack.size() > 0) {
+				SearchTreeNode node = searchStack.pop();
 				
-				while(nextNode != null) {
-					for(SearchThread worker : workers) {
-						if(worker.putNextNode(nextNode)) {
-							nextNode = null;
-							break;
-						}
-					}
+				createResult = createBranchNode(node, RIGHT);
+				if(createResult) {
+					searchStack.push(node.right());
+				}
+				else {
+					resultSet.add(node);
+				}
+				
+				createResult = createBranchNode(node, LEFT);
+				if(createResult) {
+					searchStack.push(node.left());
+				}
+				else {
+					resultSet.add(node);
 				}
 			}
 			
-			shutdownWorkers(workers);
-			group.list();
-				
-			return resultSet;
-		}
-		
-		private void shutdownWorkers(SearchThread[] workers) {
-			for(SearchThread worker: workers) {
-				while(!worker.putNextNode(m_root)) {}
-			}
-		}
-		
-		private ThreadGroup populate(SearchThread[] workers, SearchResultSet resultSet, SearchDeciderStack searchStack) {
-			ThreadGroup group = new ThreadGroup("Searchers");
-			
-			for(int i=0; i < workers.length; i++) {
-				workers[i] = new SearchThread(m_array, resultSet, searchStack);
-				new Thread(group, workers[i]).start();
-			}
-			return group;
-		}
-		
-		private String getResultString(SearchResultSet resultSet) {
 			SearchTreeNode[] results = resultSet.result();
 			SearchTreeNode resultNode = null;
 			if(results.length <= 0) { return "0 0"; } // No results
@@ -722,7 +765,6 @@ public class Solution {
 				 * Multiple sets have same score and story count,
 				 *  perform lexicographical comparison
 				 */
-				/*
 				SearchTreeNode currentBest = null;
 				for(int i=0; i < results.length; i++) {
 					if(currentBest == null) {
@@ -734,8 +776,6 @@ public class Solution {
 					}
 				}
 				resultNode = currentBest;
-				*/
-				throw new UnexpectedStateException("Get result should neve have more than one result.");
 			}
 			
 			int maxScore = m_array.maxScore(resultNode.selection());
@@ -745,121 +785,57 @@ public class Solution {
 			return out;
 		}
 		
-		private boolean notFinished(SearchResultSet resultSet, SearchDeciderStack searchStack, FinishState finishState) {
-			boolean scoreNotEnough = resultSet.curMaxScore() <= searchStack.currentMaxFractional();
-			boolean stackHasMore = searchStack.size() > 0;
-			boolean resultNotFound = finishState.isNotFinished();
+		/**
+		 * Compare to nodes and find the one with the lowest order
+		 * lexographical story set.
+		 * 
+		 * @param o1 a search node to compare
+		 * @param o2 a search node to compare
+		 * @return the node with lowest lexographical order
+		 */
+		private SearchTreeNode lexicographicTest(SearchTreeNode o1, SearchTreeNode o2) {
+			String ids1 = m_array.toString(o1.selection());
+			String ids2 = m_array.toString(o2.selection());
 			
-			boolean notFinished = scoreNotEnough && stackHasMore && resultNotFound;
-			return notFinished;
-		}
-	}
-	
-	class FinishState {
-		public volatile boolean isFinished = false;
-		public boolean isFinished() { return isFinished; }
-		public boolean isNotFinished() { return !isFinished; }
-		public void finish() { 
-			isFinished = true;
-		}
-		
-	}
-	
-	static class SearchThread implements Runnable {
-		private SortedDensityArray m_array = null;
-		private SearchResultSet m_resultSet = null;
-		private SearchDeciderStack m_searchStack = null;
-		
-		private final boolean LEFT = true;
-		private final boolean RIGHT = false;
-		
-		private SearchTreeNode m_nextNode = null;
-		private final Object lock = new Object();
-		
-		public SearchThread(SortedDensityArray array, SearchResultSet resultSet, SearchDeciderStack searchStack) {
-			if(array == null || resultSet == null || searchStack == null) {
-				throw new NullPointerException("Parameter(s) null in search pool constructor");
+			if(ids1.compareTo(ids2) < 0) { return o1; }
+			else if(ids1.compareTo(ids2) > 0) { return o2; }
+			else {
+				throw new UnexpectedStateException("Two selections should never be lexicographically the same!");
 			}
-			m_array = array;
-			m_resultSet = resultSet;
-			m_searchStack = searchStack;
 		}
 		
-		public boolean putNextNode(SearchTreeNode node) {
-			if(node == null) { throw new NullPointerException("Cannot set a null node."); }
-			if(m_nextNode != null) { return false; }
+		/**
+		 * Create the next branch node based on the selection stored in node.
+		 * <p>
+		 * If a node is created then this returns true, meaning there may be more nodes following.
+		 * If a node can't be created then this returns false, meaning its a leaf node.
+		 * 
+		 * @param node the node to create a left node on
+		 * @param isLeft true if this is the left branch, false if its the right
+		 * @return True if it was created. False if it wasn't, node is a leaf node
+		 */
+		private boolean createBranchNode(SearchTreeNode node, boolean isLeft) { 
+			SearchTreeNode child = isLeft ? node.left() : node.right();
 			
-			synchronized (lock) {
-				m_nextNode = node;
-				lock.notifyAll();
-			}
-			return true;
-		}
-		
-		@Override
-		public void run() {
-			SearchTreeNode node = null;
-			try {
-				node = nextNode();
-			} catch(InterruptedException e) {
-				if(m_nextNode == null || m_nextNode instanceof RootNode) { return; }
-				else {
-					e.printStackTrace();
+			if(child == null) {
+				// Check if there are more selections possible
+				if(node.selection().size() < m_array.size()) {
+					
+					// Increase selection by 1 and set it depending on path
+					Selection selection = node.selection().clone();
+					int index = selection.size(); // Index in selection for new node
+					selection.set(index, isLeft);
+					
+					// Create node with new selection
+					child = SearchTreeNode.createNode(m_array, node.score(), node.height(), selection);
+					if(isLeft) { node.setLeft(child); }
+					else { node.setRight(child); }
+					
+					return (child == null) ? false : true;
 				}
 			}
-			
-			while(notFinished(node)) {
-				boolean createLeftResult = SearchTreeNode.createBranchNode(m_array, node, LEFT);
-				boolean createRightResult = SearchTreeNode.createBranchNode(m_array, node, RIGHT);
-				
-				if(createLeftResult) {
-					m_searchStack.push(node.left());
-				}
-				if(createRightResult) {
-					m_searchStack.push(node.right());
-				}
-				if(!createRightResult && !createLeftResult) {
-					ADD_RESULT result = m_resultSet.add(node);
-					System.out.println(result);
-				}
-				
-				try {
-					node = nextNode();
-				} catch(InterruptedException e) {
-					if(m_nextNode == null || m_nextNode instanceof RootNode) { return; }
-					else {
-						e.printStackTrace();
-					}
-				}
-			}
+			return false;
 		}
-		
-		private SearchTreeNode nextNode() throws InterruptedException {
-			SearchTreeNode next = null;
-			
-			synchronized (lock) {
-				while(m_nextNode == null) {
-					lock.wait();
-				}
-				next = m_nextNode;
-				m_nextNode = null;
-			}
-			return next;
-		}
-		
-		private boolean notFinished(SearchTreeNode node) {
-			return (node instanceof RootNode) ? false : true;
-		}
-	}
-	
-	enum ADD_RESULT {
-		SUCCESS,
-		/* Node score wasn't greater than the best*/
-		FAIL_SCORE,
-		/* Node selection count wasn't lower than best*/
-		FAIL_COUNT,
-		/* Node lexo wasn't lesser than the best */
-		FAIL_LEXO
 	}
 	
 	/**
@@ -878,31 +854,21 @@ public class Solution {
 	 * 
 	 */
 	class SearchResultSet {
-		private SortedSet<SearchTreeNode> nodes = Collections.synchronizedSortedSet(new TreeSet<SearchTreeNode>());
-		private FinishState m_finishState = null;
+		private TreeSet<SearchTreeNode> nodes = new TreeSet<SearchTreeNode>();
 		
-		private SortedDensityArray m_array = null;
 		private int m_curMaxScore = 0;
 		private int m_curMinSelectedCount = -1;
-		private String m_curBestLexo = null;
 		
-		public SearchResultSet(SortedDensityArray array, FinishState finishState) {
-			if(array == null) { throw new NullPointerException("Array can't be null"); }
-			if(finishState == null) { throw new NullPointerException("Finish state cannot be null."); }
-			
-			m_array = array;
-			m_finishState = finishState;
-		}
-		
-		public synchronized int curMaxScore() { return m_curMaxScore; }
+		public int curMaxScore() { return m_curMaxScore; }
 		
 		/**
 		 * Try to add a node to the set
 		 * 
 		 * @param node a node to add 
-		 * @return an ADD_RESULT of SUCCESS if added, otherwise a FAIL type
+		 * @return return True if the add was successful, False if the node was rejected by the
+		 * 	set for not being good enough.
 		 */
-		public ADD_RESULT add(SearchTreeNode node) {
+		public boolean add(SearchTreeNode node) {
 			if(node == null) { throw new NullPointerException(); }
 			
 			/*
@@ -911,34 +877,17 @@ public class Solution {
 			 * 		Story Count
 			 * 		String lexicographicallity
 			 */
-			if(node.score() < m_curMaxScore) { return ADD_RESULT.FAIL_SCORE; }
+			if(node.score() < m_curMaxScore) { return false; }
 			else if(node.score() == m_curMaxScore) {
 				// Check if node's selected count beats current
 				if(node.selectedCount() < m_curMinSelectedCount || m_curMinSelectedCount == -1) {
 					nodes.clear();
 					nodes.add(node);
 					m_curMinSelectedCount = node.selectedCount();
-					m_curBestLexo = m_array.toString(node.selection());
 				}
-				else if(node.selectedCount() > m_curMinSelectedCount) { return ADD_RESULT.FAIL_COUNT; } // Don't add node that has more stories & equal score
-				else { // Can't do lexicographical test, add and do at final result
-					String nodeIds = m_array.toString(node.selection());
-
-					int cmp = nodeIds.compareTo(m_curBestLexo); 
-					if(cmp < 0) {
-						nodes.clear();
-						nodes.add(node);
-						m_curMaxScore = node.score();
-						m_curMinSelectedCount = node.selectedCount();
-						m_curBestLexo = nodeIds;
-					}
-					else if(cmp == 0) { 
-						throw new UnexpectedStateException("Two selections should never be lexicographically the same!");
-					}
-					else {
-						m_finishState.finish();
-						return ADD_RESULT.FAIL_LEXO; 
-					}
+				else if(node.selectedCount() > m_curMaxScore) { return false; } // Don't add node that has more stories & equal score
+				else{ // Can't do lexicographical test, add and do at final result
+					nodes.add(node);
 				}
 			}
 			else { // Greater, remove all prior results
@@ -946,9 +895,8 @@ public class Solution {
 				nodes.add(node);
 				m_curMaxScore = node.score();
 				m_curMinSelectedCount = node.selectedCount();
-				m_curBestLexo = m_array.toString(node.selection());
 			}
-			return ADD_RESULT.SUCCESS;
+			return true;
 		}
 		
 		/**
@@ -956,7 +904,7 @@ public class Solution {
 		 * 
 		 * @return an array of search nodes
 		 */
-		public synchronized SearchTreeNode[] result() {
+		public SearchTreeNode[] result() {
 			SearchTreeNode[] results = new SearchTreeNode[nodes.size()];
 			nodes.toArray(results);
 			return results;
@@ -979,38 +927,24 @@ public class Solution {
 	 *
 	 */
 	class SearchDeciderStack {
-		//private ArrayList<SearchTreeNode> m_stack = new ArrayList<SearchTreeNode>();
-		private SortedSet<SearchTreeNode> m_stack = null;
-		private DeciderComparator m_comparator = null; 
+		private TreeSet<SearchTreeNode> m_stack = new TreeSet<SearchTreeNode>(new DeciderComparator());
 		private double m_currentFractionalScore = 0.0;
-		private FinishState m_finishState = null;
 		
-		public SearchDeciderStack(DeciderComparator comp, FinishState finishState) { 
-			if(comp == null) { throw new NullPointerException("Comparator in constructor cannot be null"); }
-			if(finishState == null) { throw new NullPointerException("Finish state cannot be null."); }
-			m_finishState = finishState;
-			m_comparator = comp;
-			m_stack = Collections.synchronizedSortedSet(new TreeSet<SearchTreeNode>(m_comparator));
-		}
-		
-		public synchronized double currentMaxFractional() {
-			return m_currentFractionalScore;				
+		public double currentMaxFractional() {
+			return m_currentFractionalScore;
 		}
 		
 		public int size() { return m_stack.size(); }
 		
-		public synchronized boolean push(SearchTreeNode node) {
+		public boolean push(SearchTreeNode node) {
 			if(node == null) { throw new NullPointerException("Cannot add null node to decider stack."); }
 			
 			double nodeFracScore = node.maxFractionalScore();
-			
 			boolean addResult = m_stack.add(node);
-			if(addResult) {				
+			if(addResult) {
 				if(nodeFracScore > m_currentFractionalScore) {
 					setCurrentMaxFractional(nodeFracScore);
 				}
-				//printStack(false);
-				notifyAll();	
 			}
 			
 			return addResult;
@@ -1021,33 +955,10 @@ public class Solution {
 		 * 
 		 * @return returns the highest node on success; returns null if the stack is empty
 		 */
-		public synchronized SearchTreeNode pop() {
-			SearchTreeNode node = null;
-			while(m_finishState.isNotFinished() && node == null) {
-				if(size() <= 0) {
-					try { 
-						while(size() <=0) {
-							wait();
-						}
-						node = tryPop();		
-					} catch(InterruptedException e) {}
-				}
-				else {
-					node = tryPop();	
-				}
-			}
-			return node;
-		}
-		
-		private SearchTreeNode tryPop() {
+		public SearchTreeNode pop() {
 			if(size() > 0) {
 				SearchTreeNode node = m_stack.first();
 				m_stack.remove(node);
-				
-				//	printStack(true);	
-				
-			
-				// Set new maxFractional
 				if(size() > 0) {
 					setCurrentMaxFractional(m_stack.first().maxFractionalScore());
 				}
@@ -1059,57 +970,25 @@ public class Solution {
 		}
 		
 		private void setCurrentMaxFractional(double score) {
-			m_currentFractionalScore = score;				
+			m_currentFractionalScore = score;
 		}
 		
-		private void printStack(boolean isPop) {
-			String out = isPop ? "POP : { " : "PUSH: { ";
-			for(SearchTreeNode node : m_stack) {
-				out += node.selection().toString() + ", ";
+		
+		class DeciderComparator implements Comparator<SearchTreeNode> {
+
+			@Override
+			public int compare(SearchTreeNode o1, SearchTreeNode o2) {
+				double o1Score = o1.maxFractionalScore();
+				double o2Score = o2.maxFractionalScore();
+				if(o1Score > o2Score) { return -1; }
+				else if(o1Score < o2Score) { return 1; }
+				
+				return 0;
 			}
-			out += " }";
-			System.out.println(out);
+			
 		}
 	}
 	
-	class DeciderComparator implements Comparator<SearchTreeNode> {
-		private SortedDensityArray m_array = null;
-		
-		public DeciderComparator(SortedDensityArray array) {
-			if(array == null) { throw new NullPointerException("Array cannot be null."); }
-			m_array = array;
-		}
-		
-		/** 
-		 * Max Fractional First
-		 * Max Count
-		 * Lexo
-		 */
-		@Override
-		public int compare(SearchTreeNode o1, SearchTreeNode o2) {
-			int cmp;
-			if(o1.maxFractionalScore() > o2.maxFractionalScore()) {
-				return -1; // Descending order, bigger is better so -1
-			}
-			else if(o1.maxFractionalScore() < o2.maxFractionalScore()) {
-				return 1;
-			}
-			else { // Equal, check count
-				if(o1.selectedCount() < o2.selectedCount()) {
-					return 1;
-				}
-				else if(o1.selectedCount() > o2.selectedCount()) {
-					return -1;
-				}
-				else { // Equal, check lexo
-					String o1Ids = m_array.toString(o1.selection());
-					String o2Ids = m_array.toString(o2.selection());
-					return o1Ids.compareTo(o2Ids);
-				}
-			}
-		}
-		
-	}
 	
 	class RootNode extends SearchTreeNode { 
 		
@@ -1196,8 +1075,6 @@ public class Solution {
 		
 		@Override
 		public int compareTo(SearchTreeNode o) {
-			if(this == o) { return 0; } // Object is itself
-			
 			// Check for which has max score
 			if(this.score() > o.score()) {
 				return 1;
@@ -1218,39 +1095,6 @@ public class Solution {
 					return 0;
 				}
 			}
-		}
-		
-		/**
-		 * Create the next branch node based on the selection stored in node.
-		 * <p>
-		 * If a node is created then this returns true, meaning there may be more nodes following.
-		 * If a node can't be created then this returns false, meaning its a leaf node.
-		 * 
-		 * @param node the node to create a left node on
-		 * @param isLeft true if this is the left branch, false if its the right
-		 * @return True if it was created. False if it wasn't, node is a leaf node
-		 */
-		public static boolean createBranchNode(SortedDensityArray array, SearchTreeNode node, boolean isLeft) { 
-			SearchTreeNode child = isLeft ? node.left() : node.right();
-			
-			if(child == null) {
-				// Check if there are more selections possible
-				if(node.selection().size() < array.size()) {
-					
-					// Increase selection by 1 and set it depending on path
-					Selection selection = node.selection().clone();
-					int index = selection.size(); // Index in selection for new node
-					selection.set(index, isLeft);
-					
-					// Create node with new selection
-					child = SearchTreeNode.createNode(array, node.score(), node.height(), selection);
-					if(isLeft) { node.setLeft(child); }
-					else { node.setRight(child); }
-					
-					return (child == null) ? false : true;
-				}
-			}
-			return false;
 		}
 		
 		/**
@@ -1296,7 +1140,7 @@ public class Solution {
 			return builder.toString();
 		}
 	}
-		
+	
 	/**
 	 * Action was invalid or supplied arguments were invalid
 	 *
