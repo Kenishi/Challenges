@@ -15,4 +15,4 @@ Details my solutions to challenges put up by companies which are publically avai
 
 ### /TestTemplate
 
-The TestTemplate directory holds a pre-made JUnit testing template I use when running test cases against potential solutions. The Test class contains 2 internal classes which wrap the STDIN and STDOUT streams and make it easier to build test cases and check expected results. 
+The TestTemplate directory holds a JUnit testing template I made for running test cases against potential solutions. The Test class contains 2 internal classes which wrap the STDIN and STDOUT streams and make it easier to build test cases and check expected results. 
